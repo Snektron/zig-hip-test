@@ -132,3 +132,41 @@ pub const Function = struct {
         }
     }
 };
+
+pub const Event = struct {
+    handle: c.hipEvent_t,
+
+    pub fn create() Event {
+        var event: Event = undefined;
+        return switch (c.hipEventCreate(&event.handle)) {
+            c.hipSuccess => event,
+            else => |err| unexpected(err),
+        };
+    }
+
+    pub fn destroy(self: Event) void {
+        assert(c.hipEventDestroy(self.handle) == c.hipSuccess);
+    }
+
+    pub fn record(self: Event, stream: c.hipStream_t) void {
+        switch (c.hipEventRecord(self.handle, stream)) {
+            c.hipSuccess => {},
+            else => |err| unexpected(err),
+        }
+    }
+
+    pub fn synchronize(self: Event) void {
+        switch (c.hipEventSynchronize(self.handle)) {
+            c.hipSuccess => {},
+            else => |err| unexpected(err),
+        }
+    }
+
+    pub fn elapsed(start: Event, stop: Event) f32 {
+        var result: f32 = undefined;
+        return switch (c.hipEventElapsedTime(&result, start.handle, stop.handle)) {
+            c.hipSuccess => result,
+            else => |err| unexpected(err),
+        };
+    }
+};

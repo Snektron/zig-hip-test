@@ -1,23 +1,15 @@
-unsigned int workitem_x() {
+unsigned int workItemX() {
     return __builtin_amdgcn_workitem_id_x();
 }
 
-unsigned int workitem_y() {
-    return __builtin_amdgcn_workitem_id_y();
-}
-
-unsigned int workitem_z() {
-    return __builtin_amdgcn_workitem_id_z();
-}
-
-unsigned int workgroup_x() {
+unsigned int workGroupX() {
     return __builtin_amdgcn_workgroup_id_x();
 }
 
-unsigned int workgroup_y() {
-    return __builtin_amdgcn_workgroup_id_y();
+unsigned int workDimX() {
+    return __builtin_amdgcn_workgroup_size_x();
 }
 
-unsigned int workgroup_z() {
-    return __builtin_amdgcn_workgroup_id_z();
+void syncThreads() {
+    __builtin_amdgcn_s_barrier();
 }
