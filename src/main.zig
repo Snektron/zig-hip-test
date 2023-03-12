@@ -13,7 +13,7 @@ const reduce = @import("device_reduce.zig");
 pub fn main() !void {
     const allocator = std.heap.page_allocator;
 
-    const size = reduce.items_per_block * reduce.items_per_block * reduce.items_per_block;
+    const size = 1024 * 1024 * 1024;
     std.log.info("reducing {} values", .{size});
 
     // Set up the input on the host.
@@ -44,16 +44,20 @@ pub fn main() !void {
 
     var remaining_size: usize = size;
     while (remaining_size != 1) {
-        remaining_size = @divExact(remaining_size, reduce.items_per_block);
-        std.log.info("launching kernel with {} block(s)", .{remaining_size});
+        const blocks = std.math.divCeil(usize, remaining_size, reduce.items_per_block) catch unreachable;
+        const valid_in_last_block = remaining_size % reduce.items_per_block;
+
+        std.log.info("launching kernel with {} block(s)", .{blocks});
         kernel.launch(
             .{
-                .grid_dim = .{ .x = @intCast(u32, remaining_size) },
+                .grid_dim = .{ .x = @intCast(u32, blocks) },
                 .block_dim = .{ .x = reduce.block_dim },
                 .shared_mem_per_block = @sizeOf(f32) * reduce.block_dim,
             },
-            .{d_values.ptr},
+            .{ d_values.ptr, @intCast(u32, blocks - 1), @intCast(u32, valid_in_last_block) },
         );
+
+        remaining_size = blocks;
     }
 
     stop.record(null);
@@ -67,5 +71,10 @@ pub fn main() !void {
     hip.memcpy(f32, &result, d_values[0..1], .device_to_host);
 
     std.log.info("result: {d}", .{result[0]});
-    std.log.info("processed {} items in {d:.2} ms ({d:.2}GB/s)", .{ size, elapsed, @sizeOf(f32) * size / elapsed / 1000_000 });
+    std.log.info("processed {} items in {d:.2} ms ({d:.2} GItem/s, {d:.2} GB/s)", .{
+        size,
+        elapsed,
+        size / elapsed / 1000_000,
+        @sizeOf(f32) * size / elapsed / 1000_000,
+    });
 }
