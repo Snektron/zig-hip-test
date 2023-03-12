@@ -67,7 +67,7 @@ const OffloadBundleStep = struct {
 
     fn writeEntryId(writer: anytype, entry: *CompileStep) !void {
         const target = entry.target_info.target;
-        try writer.print("hipv4-amdgcn-amd-amdhsa--{s}", .{ target.cpu.model.llvm_name.? });
+        try writer.print("hipv4-amdgcn-amd-amdhsa--{s}", .{target.cpu.model.llvm_name.?});
         // TODO: Target features like xnack+, xnack-, etc?
     }
 
