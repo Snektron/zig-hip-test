@@ -29,6 +29,71 @@ fn buildOffloadBinary(
     return lib;
 }
 
+const EmbedFileStep = struct {
+    b: *std.Build,
+    step: std.Build.Step,
+    name: []const u8,
+    src: FileSource,
+    generated: std.Build.GeneratedFile,
+
+    fn create(b: *std.Build, name: []const u8, src: FileSource) *EmbedFileStep {
+        const self = b.allocator.create(EmbedFileStep) catch unreachable;
+        self.* = .{
+            .b = b,
+            .step = std.Build.Step.init(.custom, "offload-bundle", b.allocator, make),
+            .name = self.b.allocator.dupe(u8, name) catch unreachable,
+            .src = src,
+            .generated = .{ .step = &self.step },
+        };
+        src.addStepDependencies(&self.step);
+        return self;
+    }
+
+    fn getOutputSource(self: *EmbedFileStep) FileSource {
+        return .{ .generated = &self.generated };
+    }
+
+    fn make(step: *Step) !void {
+        const self = @fieldParentPtr(EmbedFileStep, "step", step);
+        const cwd = std.fs.cwd();
+
+        const entry_path = self.src.getPath(self.b);
+
+        var man = self.b.cache.obtain();
+        defer man.deinit();
+
+        man.hash.add(@as(u32, 0xc4d67262));
+        man.hash.addBytes(self.name);
+        man.hash.addBytes(entry_path);
+
+        const hit = try man.hit();
+        const digest = man.final();
+        const cache_dir_path = "embed" ++ std.fs.path.sep_str ++ digest;
+
+        self.generated.path = try self.b.cache_root.join(
+            self.b.allocator,
+            &.{ cache_dir_path, "embed.zig" },
+        );
+
+        if (hit)
+            return;
+
+        var cache_dir = try self.b.cache_root.handle.makeOpenPath(cache_dir_path, .{});
+        defer cache_dir.close();
+
+        // This file needs to be in the directory here.
+        try cwd.copyFile(entry_path, cache_dir, "data", .{});
+
+        var zig_file = try cache_dir.createFile("embed.zig", .{});
+        defer zig_file.close();
+        try zig_file.writer().print("pub const {s} = @embedFile(\"data\");", .{self.name});
+
+        try man.writeManifest();
+    }
+};
+
+const embed = EmbedFileStep.create;
+
 const OffloadBundleStep = struct {
     const alignment = 4096;
     const magic = "__CLANG_OFFLOAD_BUNDLE__";
@@ -37,8 +102,7 @@ const OffloadBundleStep = struct {
     b: *std.Build,
     step: std.Build.Step,
     entries: std.ArrayListUnmanaged(*CompileStep),
-    bundle_generated: std.Build.GeneratedFile,
-    zig_generated: std.Build.GeneratedFile,
+    generated: std.Build.GeneratedFile,
 
     fn create(b: *std.Build) *OffloadBundleStep {
         const self = b.allocator.create(OffloadBundleStep) catch unreachable;
@@ -46,8 +110,7 @@ const OffloadBundleStep = struct {
             .b = b,
             .step = std.Build.Step.init(.custom, "offload-bundle", b.allocator, make),
             .entries = .{},
-            .bundle_generated = .{ .step = &self.step },
-            .zig_generated = .{ .step = &self.step },
+            .generated = .{ .step = &self.step },
         };
         return self;
     }
@@ -57,12 +120,8 @@ const OffloadBundleStep = struct {
         self.step.dependOn(&entry.step);
     }
 
-    fn getOutputBundleSource(self: *OffloadBundleStep) FileSource {
-        return .{ .generated = &self.bundle_generated };
-    }
-
-    fn getOutputZigSource(self: *OffloadBundleStep) FileSource {
-        return .{ .generated = &self.zig_generated };
+    fn getOutputSource(self: *OffloadBundleStep) FileSource {
+        return .{ .generated = &self.generated };
     }
 
     fn writeEntryId(writer: anytype, entry: *CompileStep) !void {
@@ -137,14 +196,9 @@ const OffloadBundleStep = struct {
         const hit = try man.hit();
         const digest = man.final();
         const cache_dir_path = "bundle" ++ std.fs.path.sep_str ++ digest;
-        self.bundle_generated.path = try self.b.cache_root.join(
+        self.generated.path = try self.b.cache_root.join(
             self.b.allocator,
             &.{ cache_dir_path, "offload_bundle.hipfb" },
-        );
-
-        self.zig_generated.path = try self.b.cache_root.join(
-            self.b.allocator,
-            &.{ cache_dir_path, "offload_bundle.zig" },
         );
 
         if (hit)
@@ -156,10 +210,6 @@ const OffloadBundleStep = struct {
         var co_file = try cache_dir.createFile("offload_bundle.hipfb", .{});
         defer co_file.close();
         try co_file.writer().writeAll(out.items);
-
-        var zig_file = try cache_dir.createFile("offload_bundle.zig", .{});
-        defer zig_file.close();
-        try zig_file.writer().writeAll("pub const bundle = @embedFile(\"offload_bundle.hipfb\");");
 
         try man.writeManifest();
     }
@@ -174,16 +224,24 @@ pub fn build(b: *std.Build) void {
 
     const optimize = b.standardOptimizeOption(.{});
 
+    // Build Zig device code
     const device_code = buildOffloadBinary(b, .{
         .name = "device-code-gfx908",
         .root_source_file = .{ .path = "src/kernel.zig" },
         .target = device_target,
         .optimize = optimize,
     });
+    const zig_bundle = OffloadBundleStep.create(b);
+    zig_bundle.addEntry(device_code);
+    const zig_embed = embed(b, "bundle", zig_bundle.getOutputSource());
 
-    const bundle = OffloadBundleStep.create(b);
-    bundle.addEntry(device_code);
+    // Build HIP device code
+    const hip_cmd = b.addSystemCommand(&.{"hipcc", "--genco", "-o"});
+    const hip_bundle = hip_cmd.addOutputFileArg("module.co");
+    hip_cmd.addFileSourceArg(FileSource.relative("src/device_reduce.hip"));
+    const hip_embed = embed(b, "bundle", hip_bundle);
 
+    // Build final executable
     const exe = b.addExecutable(.{
         .name = "zig-hip-test",
         .root_source_file = .{ .path = "src/main.zig" },
@@ -195,8 +253,11 @@ pub fn build(b: *std.Build) void {
     exe.addIncludePath("/opt/rocm/include");
     exe.addLibraryPath("/opt/rocm/lib");
     exe.linkSystemLibrary("amdhip64");
-    exe.addAnonymousModule("zig-hip-offload-bundle", .{
-        .source_file = bundle.getOutputZigSource(),
+    exe.addAnonymousModule("zig-offload-bundle", .{
+        .source_file = zig_embed.getOutputSource(),
+    });
+    exe.addAnonymousModule("hip-offload-bundle", .{
+        .source_file = hip_embed.getOutputSource(),
     });
 
     const run_cmd = exe.run();
