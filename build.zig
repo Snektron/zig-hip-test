@@ -23,9 +23,6 @@ fn buildOffloadBinary(
     lib.linker_allow_shlib_undefined = false;
     lib.bundle_compiler_rt = false;
     lib.force_pic = true;
-    // Not all the required intrinsics are available from Zig, and the linker hack
-    // does not work anymore.
-    lib.addCSourceFile("src/amdgcn_intrin.c", &.{});
     return lib;
 }
 
@@ -40,7 +37,12 @@ const EmbedFileStep = struct {
         const self = b.allocator.create(EmbedFileStep) catch unreachable;
         self.* = .{
             .b = b,
-            .step = std.Build.Step.init(.custom, "offload-bundle", b.allocator, make),
+            .step = std.Build.Step.init(.{
+                .id = .custom,
+                .name = "embed-file",
+                .owner = b,
+                .makeFn = make,
+            }),
             .name = self.b.allocator.dupe(u8, name) catch unreachable,
             .src = src,
             .generated = .{ .step = &self.step },
@@ -53,7 +55,7 @@ const EmbedFileStep = struct {
         return .{ .generated = &self.generated };
     }
 
-    fn make(step: *Step) !void {
+    fn make(step: *Step, _: *std.Progress.Node) anyerror!void {
         const self = @fieldParentPtr(EmbedFileStep, "step", step);
         const cwd = std.fs.cwd();
 
@@ -108,7 +110,12 @@ const OffloadBundleStep = struct {
         const self = b.allocator.create(OffloadBundleStep) catch unreachable;
         self.* = .{
             .b = b,
-            .step = std.Build.Step.init(.custom, "offload-bundle", b.allocator, make),
+            .step = std.Build.Step.init(.{
+                .id = .custom,
+                .name = "offload-bundle",
+                .owner = b,
+                .makeFn = make,
+            }),
             .entries = .{},
             .generated = .{ .step = &self.step },
         };
@@ -136,7 +143,7 @@ const OffloadBundleStep = struct {
         return cw.bytes_written;
     }
 
-    fn make(step: *Step) !void {
+    fn make(step: *Step, _: *std.Progress.Node) anyerror!void {
         const self = @fieldParentPtr(OffloadBundleStep, "step", step);
         const cwd = std.fs.cwd();
 
@@ -236,7 +243,7 @@ pub fn build(b: *std.Build) void {
     const zig_embed = embed(b, "bundle", zig_bundle.getOutputSource());
 
     // Build HIP device code
-    const hip_cmd = b.addSystemCommand(&.{"hipcc", "--genco", "-o"});
+    const hip_cmd = b.addSystemCommand(&.{"hipcc", "--genco", "-save-temps", "--offload-arch=gfx908", "-o"});
     const hip_bundle = hip_cmd.addOutputFileArg("module.co");
     hip_cmd.addFileSourceArg(FileSource.relative("src/device_reduce.hip"));
     const hip_embed = embed(b, "bundle", hip_bundle);

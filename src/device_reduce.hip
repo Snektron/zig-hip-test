@@ -9,8 +9,8 @@ extern "C" __global__ void kernel(
     unsigned last_block,
     unsigned valid_in_last_block
 ) {
-    const auto bid = blockIdx.x;
-    const auto tid = threadIdx.x;
+    const auto bid = __builtin_amdgcn_workgroup_id_x();
+    const auto tid = __builtin_amdgcn_workitem_id_x();
     const auto block_offset = bid * items_per_block;
 
     float total = 0;

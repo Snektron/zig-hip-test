@@ -1,23 +1,22 @@
 const std = @import("std");
 
-extern fn workItemX() u32;
-extern fn workGroupX() u32;
-extern fn workDimX() u32;
-extern fn syncThreads() void;
-
 pub const items_per_thread = 24;
 pub const block_dim = 256;
 pub const items_per_block = block_dim * items_per_thread;
 
 var shared: [block_dim]f32 addrspace(.shared) = undefined;
 
+fn syncThreads() void {
+    asm volatile ("s_barrier");
+}
+
 pub inline fn reduce(
     values: [*]addrspace(.global) f32,
     last_block: u32,
     valid_in_last_block: u32,
 ) void {
-    const bid = workGroupX();
-    const tid = workItemX();
+    const bid = @workGroupIdx(0);
+    const tid = @workItemIdx(0);
     const block_offset = bid * items_per_block;
 
     var total: f32 = 0;

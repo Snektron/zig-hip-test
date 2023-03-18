@@ -13,15 +13,12 @@ const hip_offload_bundle = @import("hip-offload-bundle").bundle;
 const reduce = @import("device_reduce.zig");
 
 fn test_reduce(name: []const u8, values: []const f32, module_data: *const anyopaque) !void {
-    std.log.info("testing {s}", .{name});
-    std.log.info("  reducing {} values", .{values.len});
-    std.log.info("  setting up buffers", .{});
-
+    std.log.debug("{s}: reducing {} values", .{name, values.len});
     var d_values = try hip.malloc(f32, values.len);
     defer hip.free(d_values);
     hip.memcpy(f32, d_values, values, .host_to_device);
 
-    std.log.info("  loading module", .{});
+    std.log.debug("  loading module", .{});
     const module = try hip.Module.loadData(module_data);
     defer module.unload();
 
@@ -39,8 +36,8 @@ fn test_reduce(name: []const u8, values: []const f32, module_data: *const anyopa
     while (remaining_size != 1) {
         const blocks = std.math.divCeil(usize, remaining_size, reduce.items_per_block) catch unreachable;
         const valid_in_last_block = remaining_size % reduce.items_per_block;
+        std.log.debug("  launching {} block(s)", .{blocks});
 
-        std.log.info("  launching kernel with {} block(s)", .{blocks});
         kernel.launch(
             .{
                 .grid_dim = .{ .x = @intCast(u32, blocks) },
@@ -58,11 +55,14 @@ fn test_reduce(name: []const u8, values: []const f32, module_data: *const anyopa
 
     const elapsed = hip.Event.elapsed(start, stop);
 
+
+    std.log.debug("  fetching result", .{});
     var result: [1]f32 = undefined;
     hip.memcpy(f32, &result, d_values[0..1], .device_to_host);
 
-    std.log.info("  result: {d}", .{result[0]});
-    std.log.info("  processed {} items in {d:.2} ms ({d:.2} GItem/s, {d:.2} GB/s)", .{
+    std.log.info("{s}: result = {d}, processed {} items in {d:.2} ms ({d:.2} GItem/s, {d:.2} GB/s)", .{
+        name,
+        result[0],
         values.len,
         elapsed,
         @intToFloat(f32, values.len) / elapsed / 1000_000,
@@ -80,6 +80,6 @@ pub fn main() !void {
     defer allocator.free(values);
     for (values, 0..) |*x, i| x.* = @intToFloat(f32, i);
 
-    try test_reduce("hip", values, hip_offload_bundle);
     try test_reduce("zig", values, zig_offload_bundle);
+    try test_reduce("hip", values, hip_offload_bundle);
 }
