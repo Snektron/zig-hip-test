@@ -15,8 +15,8 @@ pub inline fn reduce(
     last_block: u32,
     valid_in_last_block: u32,
 ) void {
-    const bid = @workGroupIdx(0);
-    const tid = @workItemIdx(0);
+    const bid = @workGroupId(0);
+    const tid = @workItemId(0);
     const block_offset = bid * items_per_block;
 
     var total: f32 = 0;
