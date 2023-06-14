@@ -11,7 +11,8 @@ fn syncThreads() void {
 }
 
 pub inline fn reduce(
-    values: [*]addrspace(.global) f32,
+    in: [*]addrspace(.global) f32,
+    out: [*]addrspace(.global) f32,
     last_block: u32,
     valid_in_last_block: u32,
 ) void {
@@ -24,11 +25,11 @@ pub inline fn reduce(
         inline for (0..items_per_thread) |i| {
             const index = block_dim * i + tid;
             if (index < valid_in_last_block)
-                total += values[block_offset + block_dim * i + tid];
+                total += in[block_offset + block_dim * i + tid];
         }
     } else {
         inline for (0..items_per_thread) |i| {
-            total += values[block_offset + block_dim * i + tid];
+            total += in[block_offset + block_dim * i + tid];
         }
     }
 
@@ -45,6 +46,6 @@ pub inline fn reduce(
     }
 
     if (tid == 0) {
-        values[bid] = shared[0];
+        out[bid] = shared[0];
     }
 }

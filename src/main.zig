@@ -14,9 +14,11 @@ const reduce = @import("device_reduce.zig");
 
 fn test_reduce(name: []const u8, values: []const f32, module_data: *const anyopaque) !void {
     std.log.debug("{s}: reducing {} values", .{name, values.len});
-    var d_values = try hip.malloc(f32, values.len);
-    defer hip.free(d_values);
-    hip.memcpy(f32, d_values, values, .host_to_device);
+    var d_values_a = try hip.malloc(f32, values.len);
+    defer hip.free(d_values_a);
+    var d_values_b = try hip.malloc(f32, values.len);
+    defer hip.free(d_values_b);
+    hip.memcpy(f32, d_values_a, values, .host_to_device);
 
     std.log.debug("  loading module", .{});
     const module = try hip.Module.loadData(module_data);
@@ -44,8 +46,10 @@ fn test_reduce(name: []const u8, values: []const f32, module_data: *const anyopa
                 .block_dim = .{ .x = reduce.block_dim },
                 .shared_mem_per_block = @sizeOf(f32) * reduce.block_dim,
             },
-            .{ d_values.ptr, @intCast(u32, blocks - 1), @intCast(u32, valid_in_last_block) },
+            .{ d_values_a.ptr, d_values_b.ptr, @intCast(u32, blocks - 1), @intCast(u32, valid_in_last_block) },
         );
+
+        std.mem.swap([]f32, &d_values_a, &d_values_b);
 
         remaining_size = blocks;
     }
@@ -58,7 +62,7 @@ fn test_reduce(name: []const u8, values: []const f32, module_data: *const anyopa
 
     std.log.debug("  fetching result", .{});
     var result: [1]f32 = undefined;
-    hip.memcpy(f32, &result, d_values[0..1], .device_to_host);
+    hip.memcpy(f32, &result, d_values_a[0..1], .device_to_host);
 
     std.log.info("{s}: result = {d}, processed {} items in {d:.2} ms ({d:.2} GItem/s, {d:.2} GB/s)", .{
         name,

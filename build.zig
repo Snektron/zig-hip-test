@@ -255,7 +255,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    exe.install();
+    b.installArtifact(exe);
     exe.linkLibC();
     exe.addIncludePath("/opt/rocm/include");
     exe.addLibraryPath("/opt/rocm/lib");
@@ -267,7 +267,7 @@ pub fn build(b: *std.Build) void {
         .source_file = hip_embed.getOutputSource(),
     });
 
-    const run_cmd = exe.run();
+    const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());
     if (b.args) |args| {
         run_cmd.addArgs(args);
