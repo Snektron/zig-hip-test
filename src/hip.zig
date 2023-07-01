@@ -14,7 +14,7 @@ pub fn unexpected(err: c_uint) noreturn {
 pub fn malloc(comptime T: type, n: usize) ![]T {
     var result: [*]T = undefined;
     return switch (c.hipMalloc(
-        @ptrCast(*?*anyopaque, &result),
+        @ptrCast(&result),
         n * @sizeOf(T),
     )) {
         c.hipSuccess => result[0..n],
@@ -111,7 +111,7 @@ pub const Function = struct {
     ) void {
         var args_buf: [args.len]?*anyopaque = undefined;
         inline for (&args_buf, 0..) |*arg_buf, i| {
-            arg_buf.* = @constCast(@ptrCast(*const anyopaque, &args[i]));
+            arg_buf.* = @constCast(@ptrCast(&args[i]));
         }
 
         switch (c.hipModuleLaunchKernel(

@@ -42,11 +42,11 @@ fn test_reduce(name: []const u8, values: []const f32, module_data: *const anyopa
 
         kernel.launch(
             .{
-                .grid_dim = .{ .x = @intCast(u32, blocks) },
+                .grid_dim = .{ .x = @intCast(blocks) },
                 .block_dim = .{ .x = reduce.block_dim },
                 .shared_mem_per_block = @sizeOf(f32) * reduce.block_dim,
             },
-            .{ d_values_a.ptr, d_values_b.ptr, @intCast(u32, blocks - 1), @intCast(u32, valid_in_last_block) },
+            .{ d_values_a.ptr, d_values_b.ptr, @as(u32, @intCast(blocks - 1)), @as(u32, @intCast(valid_in_last_block)) },
         );
 
         std.mem.swap([]f32, &d_values_a, &d_values_b);
@@ -69,20 +69,20 @@ fn test_reduce(name: []const u8, values: []const f32, module_data: *const anyopa
         result[0],
         values.len,
         elapsed,
-        @intToFloat(f32, values.len) / elapsed / 1000_000,
-        @sizeOf(f32) * @intToFloat(f32, values.len) / elapsed / 1000_000,
+        @as(f32, @floatFromInt(values.len)) / elapsed / 1000_000,
+        @sizeOf(f32) * @as(f32, @floatFromInt(values.len)) / elapsed / 1000_000,
     });
 }
 
 pub fn main() !void {
     const allocator = std.heap.page_allocator;
 
-    const size = 1024 * 1024 * 1024;
+    const size = 128 * 1024 * 1024;
 
     std.log.info("generating inputs", .{});
     const values = try allocator.alloc(f32, size);
     defer allocator.free(values);
-    for (values, 0..) |*x, i| x.* = @intToFloat(f32, i);
+    for (values, 0..) |*x, i| x.* = @floatFromInt(i);
 
     try test_reduce("zig", values, zig_offload_bundle);
     try test_reduce("hip", values, hip_offload_bundle);

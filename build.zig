@@ -153,7 +153,7 @@ const OffloadBundleStep = struct {
         for (self.entries.items) |entry| {
             code_objects_offset += entryIdSize(entry);
         }
-        code_objects_offset = std.mem.alignForward(code_objects_offset, alignment);
+        code_objects_offset = std.mem.alignForward(usize, code_objects_offset, alignment);
 
         var out = std.ArrayList(u8).init(self.b.allocator);
         var cw = std.io.countingWriter(out.writer());
@@ -175,7 +175,7 @@ const OffloadBundleStep = struct {
             try writer.writeIntLittle(u64, entryIdSize(entry));
             try writeEntryId(writer, entry);
 
-            code_objects_offset = std.mem.alignForward(code_objects_offset + size, alignment);
+            code_objects_offset = std.mem.alignForward(usize, code_objects_offset + size, alignment);
         }
 
         for (self.entries.items) |entry| {
