@@ -1,19 +1,19 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
-pub const std_options = struct {
-    pub const log_level = .info;
+pub const std_options = .{
+    .log_level = .info,
 };
 
 const hip = @import("hip.zig");
 
-const zig_offload_bundle = @import("zig-offload-bundle").bundle;
-const hip_offload_bundle = @import("hip-offload-bundle").bundle;
+const zig_offload_bundle = @embedFile("hip-offload-bundle");
+const hip_offload_bundle = @embedFile("hip-offload-bundle");
 
 const reduce = @import("device_reduce.zig");
 
-fn test_reduce(name: []const u8, values: []const f32, module_data: *const anyopaque) !void {
-    std.log.debug("{s}: reducing {} values", .{name, values.len});
+fn test_reduce(name: []const u8, values: []const f32, module_data: *const anyopaque, warmup: bool) !void {
+    std.log.debug("{s}: reducing {} values", .{ name, values.len });
     var d_values_a = try hip.malloc(f32, values.len);
     defer hip.free(d_values_a);
     var d_values_b = try hip.malloc(f32, values.len);
@@ -38,7 +38,9 @@ fn test_reduce(name: []const u8, values: []const f32, module_data: *const anyopa
     while (remaining_size != 1) {
         const blocks = std.math.divCeil(usize, remaining_size, reduce.items_per_block) catch unreachable;
         const valid_in_last_block = remaining_size % reduce.items_per_block;
-        std.log.debug("  launching {} block(s)", .{blocks});
+        if (!warmup) {
+            std.log.debug("  launching {} block(s)", .{blocks});
+        }
 
         kernel.launch(
             .{
@@ -59,6 +61,9 @@ fn test_reduce(name: []const u8, values: []const f32, module_data: *const anyopa
 
     const elapsed = hip.Event.elapsed(start, stop);
 
+    if (warmup) {
+        return;
+    }
 
     std.log.debug("  fetching result", .{});
     var result: [1]f32 = undefined;
@@ -84,6 +89,8 @@ pub fn main() !void {
     defer allocator.free(values);
     for (values, 0..) |*x, i| x.* = @floatFromInt(i);
 
-    try test_reduce("zig", values, zig_offload_bundle);
-    try test_reduce("hip", values, hip_offload_bundle);
+    try test_reduce("zig", values, zig_offload_bundle, true);
+    try test_reduce("hip", values, hip_offload_bundle, true);
+    try test_reduce("zig", values, zig_offload_bundle, false);
+    try test_reduce("hip", values, hip_offload_bundle, false);
 }
