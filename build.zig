@@ -11,12 +11,12 @@ pub fn build(b: *std.Build) void {
         .cpu_arch = .amdgcn,
         .os_tag = .amdhsa,
         .abi = .none,
-        .cpu_model = .{ .explicit = &std.Target.amdgpu.cpu.gfx1102 },
+        .cpu_model = .{ .explicit = &std.Target.amdgpu.cpu.gfx1101 },
     });
 
     // Build Zig device code
     const device_code = b.addSharedLibrary(.{
-        .name = "device-code-gfx1102",
+        .name = "device-code-gfx1101",
         .root_source_file = b.path("src/kernel.zig"),
         .target = device_target,
         .optimize = optimize,

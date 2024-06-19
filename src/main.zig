@@ -7,7 +7,7 @@ pub const std_options = .{
 
 const hip = @import("hip.zig");
 
-const zig_offload_bundle = @embedFile("hip-offload-bundle");
+const zig_offload_bundle = @embedFile("zig-offload-bundle");
 const hip_offload_bundle = @embedFile("hip-offload-bundle");
 
 const reduce = @import("device_reduce.zig");
